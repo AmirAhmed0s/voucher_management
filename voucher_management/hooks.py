@@ -242,3 +242,53 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+fixtures = [
+
+    # Custom Fields
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["module", "=", "Voucher Management"]
+        ]
+    },
+
+    # Client Scripts
+    {
+        "doctype": "Client Script",
+        "filters": [
+            ["module", "=", "Voucher Management"]
+        ]
+    },
+
+    # Server Scripts
+    {
+        "doctype": "Server Script",
+        "filters": [
+            ["module", "=", "Voucher Management"]
+        ]
+    },
+
+    # Custom DocTypes
+    {
+        "doctype": "DocType",
+        "filters": [
+            ["module", "=", "Voucher Management"]
+        ]
+    },
+
+    # Workspaces
+    {
+        "doctype": "Workspace",
+        "filters": [
+            ["module", "=", "Voucher Management"]
+        ]
+    },
+
+    # Dashboard Charts
+    {
+        "doctype": "Dashboard Chart",
+        "filters": [
+            ["module", "=", "Voucher Management"]
+        ]
+    }
+]
