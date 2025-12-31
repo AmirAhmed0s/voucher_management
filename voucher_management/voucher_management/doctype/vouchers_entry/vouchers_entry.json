@@ -243,16 +243,7 @@
    "fieldtype": "Section Break",
    "hidden": 1
   },
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "no_copy": 1,
-   "options": "Vouchers Entry",
-   "print_hide": 1,
-   "read_only": 1,
-   "search_index": 1
-  },
+  
   {
    "fieldname": "title",
    "fieldtype": "Data",
