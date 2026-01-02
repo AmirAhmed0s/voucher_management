@@ -65,7 +65,7 @@
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "ACC-PAY-.YYYY.-",
+   "options": "ACC-PA/RE-.YYYY.-",
    "print_hide": 1,
    "reqd": 1,
    "set_only_once": 1
