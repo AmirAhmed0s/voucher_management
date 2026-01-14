@@ -1,99 +1,132 @@
 import frappe
-from frappe.utils import flt, nowdate
+from frappe.utils import flt
+from frappe import _
 
 def on_submit(doc, method=None):
-    make_gl_entries(doc)
+    """إنشاء قيد يومية عند الترحيل"""
+    make_journal_entry(doc)
 
 def on_cancel(doc, method=None):
-    frappe.db.delete("GL Entry", {"voucher_type": doc.doctype, "voucher_no": doc.name})
-
-def make_gl_entries(doc):
-    gl_entries = []
-    company_currency = frappe.get_cached_value('Company', doc.company, 'default_currency')
-
-    def append_gl_entry(account, debit, credit, party_type=None, party=None, ref_type=None, ref_name=None, cost_center=None, remark=None):
-        if flt(debit) == 0 and flt(credit) == 0:
-            return
-        
-        # جلب عملة الحساب
-        account_currency = frappe.db.get_value("Account", account, "account_currency") or company_currency
-        
-        gl_entries.append(frappe._dict({
-            "posting_date": doc.posting_date,
-            "transaction_date": nowdate(),
-            "account": account,
-            "account_currency": account_currency,
-            "transaction_currency": company_currency, # نفترض عملة الشركة للتبسيط
-            "transaction_exchange_rate": 1.0,
+    """عند الإلغاء: كسر الرابط في الذاكرة والقاعدة ثم حذف القيد"""
+    if doc.journal_entry:
+        je_name = doc.journal_entry
+        if frappe.db.exists("Journal Entry", je_name):
+            # 1. تفريغ الحقل في قاعدة البيانات فوراً (قسرياً)
+            frappe.db.set_value("Vouchers Entry", doc.name, "journal_entry", None)
             
-            # تعبئة كافة حقول المبالغ لضمان الظهور في التقارير
-            "debit": flt(debit),
-            "credit": flt(credit),
-            "debit_in_account_currency": flt(debit),
-            "credit_in_account_currency": flt(credit),
-            "debit_in_transaction_currency": flt(debit),
-            "credit_in_transaction_currency": flt(credit),
+            # 2. تفريغ الحقل في كائن المستند الحالي (لتجنب خطأ Validation بعد الحذف)
+            doc.journal_entry = None
             
-            "party_type": party_type,
-            "party": party,
-            "voucher_type": doc.doctype,
-            "voucher_no": doc.name,
-            "company": doc.company,
-            "remarks": remark or doc.remarks,
-            "cost_center": cost_center or doc.cost_center,
-            "project": doc.custom_project,
-            "against": doc.account_payment if doc.payment_type != "Internal Transfer" else doc.paid_from,
-            "against_voucher_type": ref_type,
-            "against_voucher": ref_name,
-            "is_opening": "No"
-        }))
+            # 3. جلب مستند القيد والتعامل معه
+            je = frappe.get_doc("Journal Entry", je_name)
+            
+            try:
+                if je.docstatus == 1:
+                    je.cancel()
+                
+                # 4. حذف القيد نهائياً من النظام
+                frappe.delete_doc("Journal Entry", je_name)
+                frappe.msgprint(_("تم حذف قيد اليومية {0} وتصفير الحقل بنجاح").format(je_name))
+            except Exception as e:
+                # في حال فشل الحذف لأي سبب، نضمن أن الحقل قد تم تصفيره على الأقل
+                frappe.msgprint(_("تم فك الارتباط ولكن فشل حذف القيد: {0}").format(str(e)))
 
-    # --- Case 1: Receive ---
+def on_trash(doc, method=None):
+    """عند حذف السند نهائياً"""
+    if doc.journal_entry:
+        if frappe.db.exists("Journal Entry", doc.journal_entry):
+            je_name = doc.journal_entry
+            # كسر الرابط قبل الحذف
+            frappe.db.set_value("Vouchers Entry", doc.name, "journal_entry", None)
+            frappe.delete_doc("Journal Entry", je_name)
+
+def make_journal_entry(doc):
+    # تجنب التكرار
+    if doc.journal_entry and frappe.db.exists("Journal Entry", doc.journal_entry):
+        return
+
+    je = frappe.new_doc("Journal Entry")
+    je.posting_date = doc.posting_date
+    je.company = doc.company
+    je.cheque_date = doc.posting_date
+    je.cheque_no = doc.name
+    je.user_remark = doc.remarks
+    je.voucher_type = "Journal Entry"
+
+    tax_account = None
+    
+    # --- منطق الاستلام (Receive) ---
     if doc.payment_type == "Receive":
-        append_gl_entry(doc.account_payment, doc.amount_after_tax, 0)
+        je.append("accounts", {
+            "account": doc.account_payment,
+            "debit_in_account_currency": flt(doc.amount_after_tax),
+            "credit_in_account_currency": 0,
+            "cost_center": doc.cost_center
+        })
+
         for row in doc.references:
             total_allocated = 0
             if doc.get("vouchers_payment_references"):
                 for alloc in doc.get("vouchers_payment_references"):
                     if alloc.customer == row.party:
-                        append_gl_entry(row.account, 0, alloc.allocated_amount, row.party_type, row.party, alloc.reference_doctype, alloc.reference_name, row.cost_center, row.user_remark)
+                        je.append("accounts", {
+                            "account": row.account, "party_type": row.party_type, "party": row.party,
+                            "credit_in_account_currency": flt(alloc.allocated_amount),
+                            "reference_type": alloc.reference_doctype, "reference_name": alloc.reference_name,
+                            "cost_center": row.cost_center
+                        })
                         total_allocated += flt(alloc.allocated_amount)
-            
+
             remaining = flt(row.amount_before_tax) - total_allocated
             if remaining > 0:
-                append_gl_entry(row.account, 0, remaining, row.party_type, row.party, cost_center=row.cost_center)
-        
-        # إضافة الضريبة إذا وجدت
-        if doc.total_taxes > 0:
-            tax_acc = frappe.db.get_value("Purchase Taxes and Charges", {"parent": doc.references[0].taxes}, "account_head") if doc.references else None
-            if tax_acc: append_gl_entry(tax_acc, 0, doc.total_taxes)
+                je.append("accounts", {
+                    "account": row.account, "party_type": row.party_type, "party": row.party,
+                    "credit_in_account_currency": remaining, "cost_center": row.cost_center
+                })
+            
+            if not tax_account and row.taxes:
+                tax_account = frappe.db.get_value("Purchase Taxes and Charges", {"parent": row.taxes}, "account_head")
 
-    # --- Case 2: Pay ---
+        if tax_account and flt(doc.total_taxes) > 0:
+            je.append("accounts", {"account": tax_account, "credit_in_account_currency": flt(doc.total_taxes), "cost_center": doc.cost_center})
+
+    # --- منطق الدفع (Pay) ---
     elif doc.payment_type == "Pay":
-        append_gl_entry(doc.account_payment, 0, doc.amount_after_tax)
+        je.append("accounts", {
+            "account": doc.account_payment,
+            "credit_in_account_currency": flt(doc.amount_after_tax),
+            "debit_in_account_currency": 0,
+            "cost_center": doc.cost_center
+        })
+
         for row in doc.references:
             total_allocated = 0
             if doc.get("vouchers_payment_references2"):
                 for alloc in doc.get("vouchers_payment_references2"):
                     if alloc.suppiler == row.party:
-                        append_gl_entry(row.account, alloc.allocated_amount, 0, row.party_type, row.party, alloc.reference_doctype, alloc.reference_name, row.cost_center, row.user_remark)
+                        je.append("accounts", {
+                            "account": row.account, "party_type": row.party_type, "party": row.party,
+                            "debit_in_account_currency": flt(alloc.allocated_amount),
+                            "reference_type": alloc.reference_doctype, "reference_name": alloc.reference_name,
+                            "cost_center": row.cost_center
+                        })
                         total_allocated += flt(alloc.allocated_amount)
+
             remaining = flt(row.amount_before_tax) - total_allocated
             if remaining > 0:
-                append_gl_entry(row.account, remaining, 0, row.party_type, row.party, cost_center=row.cost_center)
-        
-        if doc.total_taxes > 0:
-            tax_acc = frappe.db.get_value("Purchase Taxes and Charges", {"parent": doc.references[0].taxes}, "account_head") if doc.references else None
-            if tax_acc: append_gl_entry(tax_acc, doc.total_taxes, 0)
+                je.append("accounts", {
+                    "account": row.account, "party_type": row.party_type, "party": row.party,
+                    "debit_in_account_currency": remaining, "cost_center": row.cost_center
+                })
 
-    # --- Case 3: Internal Transfer ---
-    elif doc.payment_type == "Internal Transfer":
-        append_gl_entry(doc.paid_from, 0, doc.paid_amount) # دائن (خارج من)
-        append_gl_entry(doc.paid_to, doc.paid_amount, 0)   # مدين (داخل إلى)
+            if not tax_account and row.taxes:
+                tax_account = frappe.db.get_value("Purchase Taxes and Charges", {"parent": row.taxes}, "account_head")
 
-    # تنفيذ الإدخال
-    for entry in gl_entries:
-        gl = frappe.new_doc("GL Entry")
-        gl.update(entry)
-        gl.insert(ignore_permissions=True)
-        gl.submit()
+        if tax_account and flt(doc.total_taxes) > 0:
+            je.append("accounts", {"account": tax_account, "debit_in_account_currency": flt(doc.total_taxes), "cost_center": doc.cost_center})
+
+    if je.accounts:
+        je.insert(ignore_permissions=True)
+        je.submit()
+        # تحديث الحقل بعد الترحيل
+        doc.db_set("journal_entry", je.name)

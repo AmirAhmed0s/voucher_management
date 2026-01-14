@@ -1,9 +1,9 @@
 // Client Script for DocType: Vouchers Entry
-// التحديث: دمج كامل للوظائف، التنسيق، جلب الفواتير، والضرائب
+// التحديث النهائي: Premium UI + Journal Entry Integration + Smart Auto-Refresh
 
 frappe.ui.form.on('Vouchers Entry', {
     onload: function(frm) {
-        // 1. حقن الـ CSS الاحترافي للواجهة والأزرار
+        // 1. حقن الـ CSS الاحترافي للواجهة والأزرار والتنسيقات المالية
         if (!document.getElementById('vouchers-entry-premium-style')) {
             let style = document.createElement('style');
             style.id = 'vouchers-entry-premium-style';
@@ -20,14 +20,21 @@ frappe.ui.form.on('Vouchers Entry', {
                     color: #ffffff !important;
                     transform: translateY(-1px);
                 }
+                .btn-view-je {
+                    background-color: #f39c12 !important;
+                    color: white !important;
+                    font-weight: bold !important;
+                }
                 .frappe-control[data-fieldname="amount_after_tax"] .control-value {
                     background-color: #e8f5e9 !important;
                     color: #2e7d32 !important;
                     font-weight: bold !important;
                     border: 1px solid #a5d6a7 !important;
                 }
-                /* إخفاء رسائل الخطأ التقنية الخاصة بالصلاحيات */
-                .msgprint-dialog .modal-body:contains("Field not permitted") { display: none !important; }
+                .frappe-control[data-fieldname="total_taxes"] .control-value {
+                    color: #d32f2f !important;
+                    font-weight: bold !important;
+                }
             `;
             document.head.appendChild(style);
         }
@@ -35,7 +42,7 @@ frappe.ui.form.on('Vouchers Entry', {
     },
 
     refresh: function(frm) {
-        // 2. تنسيق زر Get Outstanding Invoices (CSS)
+        // 2. تنسيق زر Get Outstanding Invoices (Gradient Style)
         if (frm.get_field('get_outstanding_invoices')) {
             let btn = frm.get_field('get_outstanding_invoices').$wrapper.find('button');
             btn.removeClass('btn-default').addClass('btn-primary').css({
@@ -54,11 +61,18 @@ frappe.ui.form.on('Vouchers Entry', {
             );
         }
 
-        // 3. إضافة زر Ledger عند الترحيل
-        if (frm.doc.docstatus === 1) {
-            frm.add_custom_button(__('View Ledger'), function() {
+        // 3. إدارة أزرار العرض (تظهر فقط إذا تم الترحيل ويوجد قيد مرتبط)
+        if (frm.doc.docstatus === 1 && frm.doc.journal_entry) {
+            
+            // زر فتح مستند قيد اليومية
+            frm.add_custom_button(__('View Journal Entry'), function() {
+                frappe.set_route("Form", "Journal Entry", frm.doc.journal_entry);
+            }, __("View")).addClass('btn-view-je');
+
+            // زر عرض الأستاذ العام بناءً على رقم القيد
+            frm.add_custom_button(__('General Ledger'), function() {
                 frappe.set_route("query-report", "General Ledger", {
-                    "voucher_no": frm.doc.name,
+                    "voucher_no": frm.doc.journal_entry,
                     "company": frm.doc.company,
                     "from_date": frm.doc.posting_date,
                     "to_date": frm.doc.posting_date
@@ -69,7 +83,18 @@ frappe.ui.form.on('Vouchers Entry', {
         apply_vouchers_filters(frm);
     },
 
-    // 4. منطق جلب الفواتير المستحقة
+    // --- التحديث الذكي للإلغاء ---
+    after_cancel: function(frm) {
+        // بمجرد الإلغاء بنجاح، نقوم بإعادة تحميل البيانات لتصفير حقل Journal Entry في الواجهة
+        frappe.msgprint({
+            title: __('System Update'),
+            indicator: 'blue',
+            message: __('Journal Entry has been removed and the voucher is reset.')
+        });
+        frm.reload_doc();
+    },
+
+    // 4. منطق جلب الفواتير المستحقة (Fetch & Allocate)
     get_outstanding_invoices: function(frm) {
         let customer_funds = {};
         let supplier_funds = {};
@@ -84,9 +109,9 @@ frappe.ui.form.on('Vouchers Entry', {
 
         if (Object.keys(customer_funds).length === 0 && Object.keys(supplier_funds).length === 0) {
             frappe.msgprint({
-                title: __('Notification'),
-                indicator: 'blue',
-                message: __('Please add Customers or Suppliers in the "references" table with an amount first.')
+                title: __('Notice'),
+                indicator: 'orange',
+                message: __('Please add Parties in the references table with amounts first.')
             });
             return;
         }
@@ -97,9 +122,9 @@ frappe.ui.form.on('Vouchers Entry', {
                 { label: 'From Date', fieldname: 'from_date', fieldtype: 'Date', reqd: 1, default: frappe.datetime.add_months(frappe.datetime.get_today(), -1), columns: 6 },
                 { label: 'To Date', fieldname: 'to_date', fieldtype: 'Date', reqd: 1, default: frappe.datetime.get_today(), columns: 6 },
                 { fieldtype: 'Section Break' },
-                { label: 'Allocate Payment Amount', fieldname: 'allocate_payment_amount', fieldtype: 'Check', default: 1, description: 'Distribute amounts from references table to invoices' }
+                { label: 'Auto Allocate Amount', fieldname: 'allocate_payment_amount', fieldtype: 'Check', default: 1 }
             ],
-            primary_action_label: 'Get Outstanding Invoices',
+            primary_action_label: 'Fetch Invoices',
             primary_action(values) {
                 d.hide();
                 fetch_and_allocate(frm, values, customer_funds, supplier_funds);
@@ -115,25 +140,11 @@ frappe.ui.form.on('Vouchers Entry', {
             if (account_found && !frm.doc.account_payment) {
                 frm.set_value("account_payment", account_found.account);
             }
-            apply_vouchers_filters(frm);
         });
-    },
-
-    mode_of_payment_type: function(frm) {
-        apply_vouchers_filters(frm);
-    },
-
-    payment_type: function(frm) {
-        if (frm.doc.references) {
-            let p_type = (frm.doc.payment_type === 'Receive') ? 'Customer' : (frm.doc.payment_type === 'Pay' ? 'Supplier' : '');
-            frm.doc.references.forEach(row => {
-                if (!row.party_type) frappe.model.set_value(row.doctype, row.name, 'party_type', p_type);
-            });
-        }
     }
 });
 
-// --- أحداث جدول البنود (Voucher Entry Account) ---
+// أحداث جداول الـ Child Tables
 frappe.ui.form.on('Voucher Entry Account', {
     amount: function(frm, cdt, cdn) { compute_tax_for_row_v2(frm, cdt, cdn); },
     taxes: function(frm, cdt, cdn) { compute_tax_for_row_v2(frm, cdt, cdn); },
@@ -144,7 +155,7 @@ frappe.ui.form.on('Voucher Entry Account', {
     }
 });
 
-// --- وظائف المساعدة (Helper Functions) ---
+// --- وظائف مساعدة معالجة البيانات ---
 
 async function fetch_and_allocate(frm, values, customer_funds, supplier_funds) {
     let existing_sales = (frm.doc.vouchers_payment_references || []).map(d => d.reference_name);
@@ -152,34 +163,34 @@ async function fetch_and_allocate(frm, values, customer_funds, supplier_funds) {
 
     if (Object.keys(customer_funds).length > 0) {
         let sales_invoices = await frappe.db.get_list('Sales Invoice', {
-            filters: [['customer', 'in', Object.keys(customer_funds)], ['docstatus', '=', 1], ['outstanding_amount', '>', 0], ['posting_date', 'between', [values.from_date, values.to_date]], ['name', 'not in', existing_sales]],
-            fields: ['*']
+            filters: [['customer', 'in', Object.keys(customer_funds)], ['docstatus', '=', 1], ['outstanding_amount', '>', 0], ['name', 'not in', existing_sales]],
+            fields: ['name', 'customer', 'outstanding_amount', 'grand_total', 'due_date']
         });
         sales_invoices.forEach(inv => {
             let available = customer_funds[inv.customer] || 0;
             let to_allocate = values.allocate_payment_amount ? Math.min(available, inv.outstanding_amount) : 0;
             customer_funds[inv.customer] -= to_allocate;
             let row = frm.add_child('vouchers_payment_references');
-            Object.assign(row, { reference_doctype: "Sales Invoice", reference_name: inv.name, due_date: inv.due_date, total_amount: inv.grand_total, outstanding_amount: inv.outstanding_amount, allocated_amount: to_allocate, exchange_rate: inv.conversion_rate || 1, account: inv.debit_to, reconcile_effect_on: inv.posting_date, customer: inv.customer, account_type: 'Receivable' });
+            Object.assign(row, { reference_doctype: "Sales Invoice", reference_name: inv.name, due_date: inv.due_date, total_amount: inv.grand_total, outstanding_amount: inv.outstanding_amount, allocated_amount: to_allocate, customer: inv.customer });
         });
     }
 
     if (Object.keys(supplier_funds).length > 0) {
         let purchase_invoices = await frappe.db.get_list('Purchase Invoice', {
-            filters: [['supplier', 'in', Object.keys(supplier_funds)], ['docstatus', '=', 1], ['outstanding_amount', '>', 0], ['posting_date', 'between', [values.from_date, values.to_date]], ['name', 'not in', existing_purchase]],
-            fields: ['*']
+            filters: [['supplier', 'in', Object.keys(supplier_funds)], ['docstatus', '=', 1], ['outstanding_amount', '>', 0], ['name', 'not in', existing_purchase]],
+            fields: ['name', 'supplier', 'outstanding_amount', 'grand_total', 'bill_no']
         });
         purchase_invoices.forEach(inv => {
             let available = supplier_funds[inv.supplier] || 0;
             let to_allocate = values.allocate_payment_amount ? Math.min(available, inv.outstanding_amount) : 0;
             supplier_funds[inv.supplier] -= to_allocate;
             let row = frm.add_child('vouchers_payment_references2');
-            Object.assign(row, { reference_name: inv.name, reference_doctype: "Purchase Invoice", due_date: inv.due_date, bill_no: inv.bill_no, total_amount: inv.grand_total, outstanding_amount: inv.outstanding_amount, allocated_amount: to_allocate, exchange_rate: inv.conversion_rate || 1, account: inv.credit_to, reconcile_effect_on: inv.posting_date, suppiler: inv.supplier, account_type: 'Payable' });
+            Object.assign(row, { reference_name: inv.name, reference_doctype: "Purchase Invoice", total_amount: inv.grand_total, outstanding_amount: inv.outstanding_amount, allocated_amount: to_allocate, suppiler: inv.supplier });
         });
     }
     frm.refresh_field('vouchers_payment_references');
     frm.refresh_field('vouchers_payment_references2');
-    frappe.show_alert({ message: __('Invoices fetched and allocated!'), indicator: 'green' });
+    frappe.show_alert({ message: __('Invoices Linked Successfully'), indicator: 'green' });
 }
 
 function set_party_account_safely(frm, cdt, cdn) {
@@ -202,25 +213,28 @@ function compute_tax_for_row_v2(frm, cdt, cdn) {
     }
     frappe.db.get_doc('Purchase Taxes and Charges Template', row.taxes).then(doc => {
         let sumRate = (doc.taxes || []).reduce((a, b) => a + flt(b.rate), 0);
-        let included = (doc.taxes || []).some(t => t.included_in_print_rate);
-        let tax = included ? flt(amount - (amount / (1 + sumRate / 100)), 2) : flt(amount * (sumRate / 100), 2);
-        let before = included ? flt(amount - tax, 2) : amount;
-        let after = included ? amount : flt(before + tax, 2);
-        frappe.model.set_value(cdt, cdn, { tax_amount: tax, amount_before_tax: before, amount_after_tax: after });
+        let tax = flt(amount * (sumRate / 100), 2);
+        frappe.model.set_value(cdt, cdn, { tax_amount: tax, amount_before_tax: amount, amount_after_tax: flt(amount + tax, 2) });
         recalc_totals_v2(frm);
     });
 }
 
 function recalc_totals_v2(frm) {
     let total_alloc = 0, total_tax = 0;
-    (frm.doc.references || []).forEach(r => { total_alloc += flt(r.amount_before_tax); total_tax += flt(r.tax_amount); });
-    frm.set_value({ total_allocated_amount: flt(total_alloc, 2), total_taxes: flt(total_tax, 2), amount_after_tax: flt(total_alloc + total_tax, 2) });
+    (frm.doc.references || []).forEach(r => { 
+        total_alloc += flt(r.amount_before_tax); 
+        total_tax += flt(r.tax_amount); 
+    });
+    frm.set_value({ 
+        total_allocated_amount: total_alloc, 
+        total_taxes: total_tax, 
+        amount_after_tax: total_alloc + total_tax 
+    });
 }
 
 function apply_vouchers_filters(frm) {
     frm.set_query('account_payment', () => {
-        let m_type = frm.doc.mode_of_payment_type;
-        return (m_type === 'Bank' || m_type === 'Cash') ? { filters: { 'account_type': m_type, 'company': frm.doc.company } } : { filters: { 'company': frm.doc.company } };
+        return { filters: { 'company': frm.doc.company, 'is_group': 0 } };
     });
     frm.set_query('party_type', 'references', () => {
         return { filters: [['name', 'in', ['Supplier', 'Customer', 'Employee', 'Shareholder']]] };

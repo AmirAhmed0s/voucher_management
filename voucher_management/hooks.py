@@ -248,6 +248,7 @@ app_license = "mit"
 doc_events = {
     "Vouchers Entry": {
         "on_submit": "voucher_management.vouchers_entry_gl.on_submit",
-        "on_cancel": "voucher_management.vouchers_entry_gl.on_cancel"
+        "on_cancel": "voucher_management.vouchers_entry_gl.on_cancel",
+        "on_trash": "voucher_management.vouchers_entry_gl.on_trash"
     }
 }
