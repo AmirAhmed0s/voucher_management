@@ -52,6 +52,14 @@
    "label": "Account Type",
    "print_hide": 1
   },
+   {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Asset Item",
+   "options": "Item",
+   "search_index": 1
+  },
   {
    "fieldname": "col_break1",
    "fieldtype": "Column Break"
