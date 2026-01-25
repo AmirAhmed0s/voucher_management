@@ -115,6 +115,12 @@
    "label": "Accounts"
   },
   {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+  },
+  {
    "bold": 1,
    "depends_on": "eval:(in_list([\"Internal Transfer\"], doc.payment_type) || doc.party)",
    "fetch_from": "mode_of_payment.custom_default_account",
