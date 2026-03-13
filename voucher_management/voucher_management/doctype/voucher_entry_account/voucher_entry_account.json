@@ -9,13 +9,29 @@
  "field_order": [
   "account",
   "account_type",
+  "fixed_asset",
   "col_break1",
   "party_type",
   "party",
+  "item",
+  "qty",
   "accounting_dimensions_section",
   "cost_center",
   "dimension_col_break",
   "project",
+  "banks",
+  "departments",
+  "debtors",
+  "col_break_dim2",
+  "accruesexpensestypes",
+  "prepaidexpensestypes",
+  "saleschannel",
+  "banktansactiontype",
+  "businessunit",
+  "col_break_dim3",
+  "cities",
+  "provinces",
+  "countries",
   "sec_break1",
   "taxes",
   "amount",
@@ -52,13 +68,12 @@
    "label": "Account Type",
    "print_hide": 1
   },
-   {
-   "fieldname": "item",
-   "fieldtype": "Link",
+  {
+   "default": "0",
+   "fieldname": "fixed_asset",
+   "fieldtype": "Check",
    "in_list_view": 1,
-   "label": "Asset Item",
-   "options": "Item",
-   "search_index": 1
+   "label": "Fixed Asset"
   },
   {
    "fieldname": "col_break1",
@@ -79,6 +94,23 @@
    "in_list_view": 1,
    "label": "Party",
    "options": "party_type"
+  },
+  {
+   "depends_on": "eval:doc.fixed_asset == 1",
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Asset Item",
+   "options": "Item",
+   "search_index": 1
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.fixed_asset == 1",
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Quantity"
   },
   {
    "collapsible": 1,
@@ -110,6 +142,80 @@
    "fieldtype": "Link",
    "label": "Project",
    "options": "Project"
+  },
+  {
+   "fieldname": "banks",
+   "fieldtype": "Link",
+   "label": "Banks",
+   "options": "Banks"
+  },
+  {
+   "fieldname": "departments",
+   "fieldtype": "Link",
+   "label": "Departments",
+   "options": "Departments"
+  },
+  {
+   "fieldname": "debtors",
+   "fieldtype": "Link",
+   "label": "Debtors",
+   "options": "Debtors"
+  },
+  {
+   "fieldname": "col_break_dim2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "accruesexpensestypes",
+   "fieldtype": "Link",
+   "label": "Accrues Expenses Types",
+   "options": "Accrues Expenses Types"
+  },
+  {
+   "fieldname": "prepaidexpensestypes",
+   "fieldtype": "Link",
+   "label": "Prepaid Expenses Types",
+   "options": "Prepaid Expenses Types"
+  },
+  {
+   "fieldname": "saleschannel",
+   "fieldtype": "Link",
+   "label": "Sales Channel",
+   "options": "Sales Channel"
+  },
+  {
+   "fieldname": "banktansactiontype",
+   "fieldtype": "Link",
+   "label": "Bank Transaction Type",
+   "options": "Bank Transaction Type"
+  },
+  {
+   "fieldname": "businessunit",
+   "fieldtype": "Link",
+   "label": "Business Unit",
+   "options": "Business Unit"
+  },
+  {
+   "fieldname": "col_break_dim3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cities",
+   "fieldtype": "Link",
+   "label": "Cities",
+   "options": "Cities"
+  },
+  {
+   "fieldname": "provinces",
+   "fieldtype": "Link",
+   "label": "Provinces",
+   "options": "Provinces"
+  },
+  {
+   "fieldname": "countries",
+   "fieldtype": "Link",
+   "label": "Countries",
+   "options": "Country"
   },
   {
    "fieldname": "sec_break1",
