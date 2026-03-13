@@ -1,0 +1,12 @@
+[
+ {
+  "doctype": "Custom Field",
+  "dt": "Employee",
+  "fieldname": "custom_default_employee_account",
+  "fieldtype": "Link",
+  "label": "Default Employee Account",
+  "options": "Account",
+  "insert_after": "salary_mode",
+  "description": "Default GL account used when paying from employee's account in Vouchers Entry"
+ }
+]

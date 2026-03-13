@@ -242,13 +242,14 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
-[
-
+fixtures = [
+	{"dt": "Custom Field", "filters": [["dt", "in", ["Employee"]]]},
 ]
+
 doc_events = {
-    "Vouchers Entry": {
-        "on_submit": "voucher_management.vouchers_entry_gl.on_submit",
-        "on_cancel": "voucher_management.vouchers_entry_gl.on_cancel",
-        "on_trash": "voucher_management.vouchers_entry_gl.on_trash"
-    }
+	"Vouchers Entry": {
+		"on_submit": "voucher_management.vouchers_entry_gl.on_submit",
+		"on_cancel": "voucher_management.vouchers_entry_gl.on_cancel",
+		"on_trash": "voucher_management.vouchers_entry_gl.on_trash",
+	}
 }
