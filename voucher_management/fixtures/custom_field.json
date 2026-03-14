@@ -1,5 +1,6 @@
 [
  {
+  "name": "Employee-custom_default_employee_account",
   "doctype": "Custom Field",
   "dt": "Employee",
   "fieldname": "custom_default_employee_account",
